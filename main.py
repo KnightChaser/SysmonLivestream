@@ -9,8 +9,11 @@ class SysmonETWSession(etw.ETW):
     def __init__ (self, sysmon_provider:str = "Microsoft-Windows-Sysmon") -> None:
         self.sysmon_provider = sysmon_provider
         self.sysmon_provider_guid = self.get_etw_guid(self.sysmon_provider)
+        print("ETW Session started...")
+        print(f"Sysmon Provider: {self.sysmon_provider}")
+        print(f"Sysmon Provider GUID: {self.sysmon_provider_guid}")
         self.etw_sysmon_provider = [etw.ProviderInfo(self.sysmon_provider, etw.GUID(self.sysmon_provider_guid))]
-        super().__init__(providers=self.etw_sysmon_provider, event_callback=self.etw_callback)
+        self.etw_session = etw.ETW(providers=self.etw_sysmon_provider, event_callback=self.etw_callback)
 
     # Get the GUID of the ETW provider
     def get_etw_guid(self, provider:str) -> str:
@@ -23,12 +26,17 @@ class SysmonETWSession(etw.ETW):
     def etw_callback(self, event:any) -> None:
         print(event)
 
+    # Stop the ETW session
+    def stop(self):
+        exit(0)
+
     # Start the ETW session
     def run(self, testing=True):
-        self.start()
+        self.etw_session.start()
         if testing:
             time.sleep(5)
-            self.stop()
+            self.etw_session.stop()
+            print("ETW session stopped")
         else:
             pass
 
