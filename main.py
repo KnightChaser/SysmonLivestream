@@ -2,6 +2,7 @@ import etw
 import subprocess
 import re
 import time
+import argparse
 
 class SysmonETWSession(etw.ETW):
 
@@ -41,5 +42,11 @@ class SysmonETWSession(etw.ETW):
             pass
 
 if __name__ == "__main__":
+    argument_parser = argparse.ArgumentParser()
+    argument_parser.add_argument("--testing", 
+                                 help="Testing mode", 
+                                 action="store_true")
+    args = argument_parser.parse_args()
+
     sysmon_etw = SysmonETWSession()
-    sysmon_etw.run(testing=True)
+    sysmon_etw.run(testing=args.testing)
