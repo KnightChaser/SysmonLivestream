@@ -13,8 +13,11 @@ class SysmonETWSession(etw.ETW):
         print("ETW Session started...")
         print(f"Sysmon Provider: {self.sysmon_provider}")
         print(f"Sysmon Provider GUID: {self.sysmon_provider_guid}")
-        self.etw_sysmon_provider = [etw.ProviderInfo(self.sysmon_provider, etw.GUID(self.sysmon_provider_guid))]
-        self.etw_session = etw.ETW(providers=self.etw_sysmon_provider, event_callback=self.etw_callback)
+
+        self.etw_sysmon_provider = [etw.ProviderInfo(self.sysmon_provider, 
+                                                     etw.GUID(self.sysmon_provider_guid))]
+        self.etw_session = etw.ETW(providers=self.etw_sysmon_provider, 
+                                   event_callback=self.etw_callback)
 
     # Get the GUID of the ETW provider
     def get_etw_guid(self, provider:str) -> str:
@@ -29,17 +32,28 @@ class SysmonETWSession(etw.ETW):
 
     # Stop the ETW session
     def stop(self):
-        exit(0)
+        super().stop()
 
     # Start the ETW session
     def run(self, testing=True):
         self.etw_session.start()
-        if testing:
-            time.sleep(5)
+        try:
+            # If "--testing" mode is enabled, wait ETW session only for 5 seconds.
+            if testing:
+                time.sleep(5)
+            # If "--testing" mode is not enabled, wait ETW session indefinitely.
+            else:
+                while True:
+                    time.sleep(1)
+        except KeyboardInterrupt:
+            print("Keyboard interrupt received...")
+        finally:    
             self.etw_session.stop()
             print("ETW session stopped")
-        else:
-            pass
+
+    # Signal handler to stop the ETW session
+    def signal_handler(self) -> None:
+        print("Stopping ETW session because of keyboard interrupt...")
 
 if __name__ == "__main__":
     argument_parser = argparse.ArgumentParser()
