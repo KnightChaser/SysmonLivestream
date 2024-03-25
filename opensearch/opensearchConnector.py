@@ -1,4 +1,5 @@
 from opensearchpy import OpenSearch
+from consoledraw import Console
 import datetime
 
 class OpenSearchConnector:
@@ -30,6 +31,10 @@ class OpenSearchConnector:
         opensearch_client_information = self.client.info()
         print(f"OpenSearch connection information: {self.username}@[{self.username}'s password]{self.host}:{self.port}")
         print(f"Welcome to {opensearch_client_information["version"]["distribution"]} {opensearch_client_information["version"]["number"]}!")
+
+        self.total_document_count = 0
+        self.total_document_bytes = 0
+        self.console = Console()        # For pretty console output and update
 
     # Create the index for ETW events only if the index does not exist
     def create_index_if_not_exist(self, index:str) -> None:
@@ -103,6 +108,22 @@ class OpenSearchConnector:
         if response["_shards"]["failed"] == 0:
             sysmon_log_byte = len(str(document))
             document_id = response["_id"]
-            document_result = response["result"]
             current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            print(f"[{current_time}] Documment#{document_id} --({document_result})--> index#{index} ({sysmon_log_byte:-5} bytes)")
+            self.total_document_count += 1
+            self.total_document_bytes += sysmon_log_byte
+            
+            # Prepare the formatted strings
+            lines = [
+                "*** Sysmon ETW is being forwarded to OpenSearch ***",
+                "Target:                        {}:{}(Index: {})".format(self.host, self.port, index),
+                "Latest forwarding time:        {}".format(current_time),
+                "Latest transacted document ID: {:}".format(document_id),
+                "Total document sent:           {:>15,} Docs".format(self.total_document_count),
+                "Total bytes sent:              {:>15,} Byte".format(self.total_document_bytes)
+            ]
+
+            format_string = "\n".join(lines)
+
+            # Print the formatted output
+            with self.console:
+                self.console.print(format_string)
