@@ -33,7 +33,7 @@ class SysmonETWSession(etw.ETW):
     # Get the GUID of the ETW provider from logman query
     def get_etw_guid(self, provider:str) -> str:
         cmd = f"logman query providers {provider}"
-        output = subprocess.check_output(cmd, shell = True).decode()
+        output = subprocess.check_output(cmd, shell = True).decode("utf-8")
         guid = re.search(r'{.*}', output).group(0)
         return guid
     
