@@ -21,6 +21,9 @@ if __name__ == "__main__":
     argument_parser.add_argument("--index",
                                  help = "Index name to store the logs",
                                  type = str)
+    argument_parser.add_argument("--checkAndDeploySysmonOffline",
+                                 help = "Check if Sysmon service is running or not. If not, deploy Sysmon service (sysmonExePath:sysmonConfigPath)",
+                                 type = str)
     args = argument_parser.parse_args()
 
     # argparse's argument set validation
@@ -39,8 +42,18 @@ if __name__ == "__main__":
     # Run ./deploySysmon.ps1 to check the status of the Sysmon service
     current_directory = os.path.abspath(os.getcwd())
     script_directory = os.path.dirname(os.path.abspath(__file__))
-    checker = subprocess.Popen(f"powershell.exe -ExecutionPolicy RemoteSigned -file {script_directory}/deploySysmon.ps1",
-                                stdout = sys.stdout)
+    powershell_execution_command = f"powershell.exe -ExecutionPolicy RemoteSigned -file {script_directory}/deploySysmon.ps1"
+    if args.checkAndDeploySysmonOffline:
+        if len(args.checkAndDeploySysmonOffline.split(":")) != 2:
+            argument_parser.error("--deploy option requires sysmonExePath and sysmonConfigPath. (sysmonExePath:sysmonConfigPath)")
+
+        sysmon_executable_path = args.checkAndDeploySysmonOffline.split(":")[0].replace("(", "").replace(")", "").replace("'", "").replace('"', "").strip()
+        sysmon_config_path = args.checkAndDeploySysmonOffline.split(":")[1].replace("(", "").replace(")", "").replace("'", "").replace('"', "").strip()
+        powershell_execution_command += f" -checkAndDeploySysmonOffline true -sysmonExePath {sysmon_executable_path} -sysmonConfigPath {sysmon_config_path}"
+    else:
+        powershell_execution_command += " -checkAndDeploySysmonOffline false"
+
+    checker = subprocess.Popen(powershell_execution_command, stdout = sys.stdout)
     checker.communicate()
 
     sysmon_etw.run(testing = args.testing)
