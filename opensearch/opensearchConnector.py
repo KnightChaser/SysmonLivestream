@@ -28,20 +28,31 @@ class OpenSearchConnector:
             ssl_show_warn = False
         )
 
-        opensearch_client_information = self.client.info()
-        print(f"OpenSearch connection information: {self.username}@[{self.username}'s password]{self.host}:{self.port}")
-        print(f"Welcome to {opensearch_client_information["version"]["distribution"]} {opensearch_client_information["version"]["number"]}!")
+        # Try to establish the connection to OpenSearch
+        try:
+            opensearch_client_information = self.client.info()
+            print(f"OpenSearch connection information: {self.username}@[{self.username}'s password]{self.host}:{self.port}")
+            print(f"Welcome to {opensearch_client_information["version"]["distribution"]} {opensearch_client_information["version"]["number"]}!")
+        except Exception as exception:
+            print(f"Failed to connect to OpenSearch service at {self.host}:{self.port} with {self.username}:[{self.username}'s password]")
+            print(f"Exception message: {exception}")
+            exit(-1)
 
         self.total_document_count = 0
         self.total_document_bytes = 0
+        self.delinquent_document_count = 0
+        self.delinquent_document_bytes = 0
         self.console = Console()        # For pretty console output and update
+
+        self.latest_forwarding_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+        self.latest_forwarded_document_id = None
 
     # Create the index for ETW events only if the index does not exist
     def create_index_if_not_exist(self, index:str) -> None:
         assert index, "Index should be provided"
         if not self.client.indices.exists(index = index):
             index_body = {
-                "mappings": {
+                "mappings": { 
                     "properties": {
                     "EventHeader": {
                         "properties": {
@@ -97,29 +108,62 @@ class OpenSearchConnector:
         assert etw_event,   "ETW event should be provided"
         assert index,       "Index should be provided"
         
-        # Forward data
-        document = etw_event[1]
-        response = self.client.index(
-            index = index,
-            body = document,
-            refresh = True
-        )
+        # Forward data with exception handling
+        try:
+            document = etw_event[1]
+            response = self.client.index(
+                index = index,
+                body = document,
+                refresh = True
+            )
 
-        if response["_shards"]["failed"] == 0:
-            sysmon_log_byte = len(str(document))
-            document_id = response["_id"]
-            current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
-            self.total_document_count += 1
-            self.total_document_bytes += sysmon_log_byte
+            if response["_shards"]["failed"] == 0:
+                sysmon_log_byte = len(str(document))
+                self.latest_forwarded_document_id = response["_id"]
+                self.latest_forwarding_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
+                self.total_document_count += 1
+                self.total_document_bytes += sysmon_log_byte
+                
+                # Prepare the formatted strings
+                lines = [
+                    "*** Sysmon ETW is being forwarded to OpenSearch (successful) ***",
+                    "Target:                        {}:{}(Index: {})".format(self.host, self.port, index),
+                    "Latest forwarding time:        {}".format(self.latest_forwarding_time),
+                    "Latest transacted document ID: {:}".format(self.latest_forwarded_document_id),
+                    "Total document sent:           {:>15,} Docs".format(self.total_document_count),
+                    "Total bytes sent:              {:>15,} Byte".format(self.total_document_bytes)
+                ]
+
+                if self.delinquent_document_count > 0:
+                    # If there are delinquent documents to be sent and
+                    # the agent is forwarding the document successfully,
+                    # It's resolving the delinquent documents. Print the information that the delinquency is being resolved.
+                    lines.append("Reamined delinquent documents: {:>15,} Docs".format(self.delinquent_document_count))
+                    lines.append("Remained bytes delinquent:     {:>15,} Byte".format(self.delinquent_document_bytes))
+                    self.delinquent_document_count -= 1
+                    self.delinquent_document_bytes -= sysmon_log_byte
+
+                format_string = "\n".join(lines)
+
+                # Print the formatted output
+                with self.console:
+                    self.console.print(format_string)
+
+        except Exception as exception:
+            self.delinquent_document_count += 1
+            self.delinquent_document_bytes += len(str(document))
             
             # Prepare the formatted strings
             lines = [
-                "*** Sysmon ETW is being forwarded to OpenSearch ***",
+                "*** Sysmon ETW is being forwarded to OpenSearch (failed) ***",
                 "Target:                        {}:{}(Index: {})".format(self.host, self.port, index),
-                "Latest forwarding time:        {}".format(current_time),
-                "Latest transacted document ID: {:}".format(document_id),
+                "Latest forwarding time:        {}".format(self.latest_forwarding_time),
+                "Latest transacted document ID: {:}".format(self.latest_forwarded_document_id),
                 "Total document sent:           {:>15,} Docs".format(self.total_document_count),
-                "Total bytes sent:              {:>15,} Byte".format(self.total_document_bytes)
+                "Total bytes sent:              {:>15,} Byte".format(self.total_document_bytes),
+                "Total delinquent document:     {:>15,} Docs".format(self.delinquent_document_count),
+                "Total bytes delinquent:        {:>15,} Byte".format(self.delinquent_document_bytes),
+                "Exception:                     {}".format(exception)
             ]
 
             format_string = "\n".join(lines)
